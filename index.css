@@ -1,0 +1,102 @@
+* {
+    box-sizing: border-box;
+    padding: 0;
+    margin: 0;
+}
+
+body {
+    --bs-body-font-family: Montserrat;
+    --bs-body-font-size: 13px;
+    font-family: Montserrat;
+
+    display: flex;
+    height: 100dvh;
+    flex-direction: column;
+}
+
+article {
+    overflow: hidden;
+    position: relative;
+    flex: 1;
+}
+
+#resources-section {
+    position: absolute;
+    overflow: auto;
+    height: 100%;
+    width: 100%;
+    left: 0;
+    top: 0;
+}
+
+.name-cell img {
+    margin-right: 10px;
+}
+
+.lvl-cell,
+.lvl-head {
+    text-align: center;
+    width: 56px;
+}
+
+.name-cell,
+.name-head {
+    width: 320px;
+}
+
+.date-head,
+.date-cell {
+    text-align: center;
+    width: 100px;
+}
+
+#resources-section table {
+    max-width: 960px;
+}
+
+#resources-section table thead {
+    position: sticky;
+    z-index: 1;
+    top: 0;
+}
+
+.name-cell {
+    cursor: pointer;
+}
+
+td {
+    vertical-align: middle;
+}
+
+.value-cell,
+.value-head {
+    width: 90px;
+}
+
+.value-cell {
+    cursor: pointer;
+}
+
+.value-cell,
+.xp-cell,
+.pm-cell,
+.kxp-cell,
+.total-cell {
+    text-align: center;
+}
+
+.value-head,
+.xp-head,
+.pm-head,
+.kxp-head,
+.total-head {
+    text-align: center;
+}
+
+td:focus {
+    outline: none;
+}
+
+td input {
+    text-align: center;
+}
