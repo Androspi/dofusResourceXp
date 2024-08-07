@@ -11,7 +11,7 @@ class LoadPage {
     /** @type {DofusApi} */
     #service;
 
-    /** @type {Rest.Resources.Item[]t} */
+    /** @type {Rest.Resources.Item[]} */
     #data = [];
 
     constructor() {

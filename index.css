@@ -64,12 +64,24 @@ article {
     cursor: pointer;
 }
 
+.name-cell div {
+    align-items: center;
+    position: relative;
+    display: flex;
+}
+
+.name-cell span:first-of-type {
+    padding-right: 10px;
+    flex: 1;
+}
+
 td {
     vertical-align: middle;
 }
 
 .value-cell,
 .value-head {
+    min-width: 90px;
     width: 90px;
 }
 

@@ -1,9 +1,15 @@
 import { ResourceModel } from './database/resource.model.js';
 import { DofusApi } from './services/api.service.js';
 
+import { MathHelper } from './helpers/math.helper.js';
+import { Tooltip } from './utilities/tooltip.util.js';
 import { Toast } from './utilities/toast.util.js';
+import { App } from './services/app.service.js';
 
 import { } from "./interfaces/index.interface.js";
+
+/** @type {string} */
+let lastKeyDown
 
 class IndexPage {
 
@@ -21,8 +27,19 @@ class IndexPage {
         items: 40,
     };
 
-    /** @type {string} */
-    #lastKeyDown;
+    #sorting = {
+        selected: ['totalPrice', 'asc'],
+        totalPrice: (a, b) => {
+            if (!b.xp) { return -1; }
+            if (!a.xp) { return 1; }
+
+            const aKxp = a.value / a.xp;
+            const bKxp = b.value / b.xp;
+
+            const response = aKxp > bKxp ? 1 : -1;
+            return this.#sorting.selected[1] === 'asc' ? response : (response * -1);
+        }
+    }
 
     constructor() {
         this.#service = new DofusApi();
@@ -32,9 +49,6 @@ class IndexPage {
     init() {
         this.getResources();
         this.setPageLoader();
-
-        document.addEventListener('keydown', event => this.#lastKeyDown = event.key);
-        document.addEventListener('click', () => this.#lastKeyDown = undefined);
     }
 
     getResources() {
@@ -44,7 +58,6 @@ class IndexPage {
         const dbResourcesPromise = this.#resourceModel.getAll();
 
         Promise.all([apiResourcesPromise, dbResourcesPromise]).then(([{ items }, data]) => {
-
             this.#resources = items.map(({ name, level, type, image_urls, ankama_id }) => {
                 const saved = data.find(elm => elm.id === ankama_id);
 
@@ -58,21 +71,16 @@ class IndexPage {
                     lvl: level,
                     name,
                 };
-            }).sort((a, b) => {
-                if (!b.xp) { return -1; }
-                if (!a.xp) { return 1; }
-
-                const aKxp = a.value / a.xp;
-                const bKxp = b.value / b.xp;
-
-                return aKxp > bKxp ? 1 : -1;
             });
 
-            const tbody = document.querySelector('#resource-table tbody');
-            tbody.replaceChildren();
-
-            this.loadResources(1);
+            Table.clearTable();
+            this.sortResources();
         });
+    }
+
+    sortResources() {
+        this.#resources.sort(this.#sorting[this.#sorting.selected[0]].bind(this));
+        this.loadResources(1);
     }
 
     setPageLoader() {
@@ -96,57 +104,136 @@ class IndexPage {
         const start = nextPage * this.#paginator.items - this.#paginator.items;
         const end = nextPage * this.#paginator.items;
 
-        const tbody = document.querySelector('#resource-table tbody');
+        const tbody = Table.body;
 
         this.#resources.slice(start, end).forEach(resource => {
-            const { name, lvl, icon, value, xp, date } = resource;
-
-            const row = document.createElement('tr');
-
-            const dateCell = this.#createDateCell(date);
-            const lvlCell = this.#createSimpleCell('lvl', lvl);
-            const nameCell = this.#createNameCell(name, icon);
-            const xpCell = this.#createSimpleCell('xp');
-            const pmCell = this.#createSimpleCell('pm');
-            const kxpCell = this.#createSimpleCell('kxp');
-            const totalCell = this.#createSimpleCell('total');
-
-            const valueCell = this.#createValueCell(resource, kxpCell, totalCell);
-
-            if (xp) {
-                xpCell.innerHTML = new Intl.NumberFormat('es-CO', { minimumFractionDigits: 0 })
-                    .format(xp);
-
-                valueCell.dispatchEvent(new CustomEvent('update', { detail: { value } }));
-
-                pmCell.innerText = new Intl.NumberFormat('es-CO', { minimumFractionDigits: 0 })
-                    .format(+(20 * xp).toFixed(2));
-            }
-
-            row.append(dateCell, lvlCell, nameCell, xpCell, valueCell, pmCell, kxpCell, totalCell);
+            let row = Table.createRow(resource);
             tbody.append(row);
+            this.onRowUpdate(row);
         });
     }
 
     /**
      * 
-     * @param {number} date 
+     * @param {HTMLTableRowElement} row 
+     */
+    onRowUpdate(row) {
+        row.addEventListener('update', ({ detail: { row, data } }) => {
+            this.onRowUpdate(row);
+            this.#saveValue(data);
+        });
+    }
+
+
+    /**
+     * 
+     * @param {Index.Resource} resource 
+     * @param {number} value 
+     * @param {number} prevValue 
+     * @returns 
+     */
+    async #saveValue(resource) {
+        await this.#resourceModel.createOrUpdate(resource);
+        Toast.showNotification(resource.name, 'Actualizado correctamente');
+    }
+
+};
+
+class Table {
+
+    /** @type {HTMLElement} */
+    static get body() {
+        return document.querySelector('#resource-table tbody');
+    }
+
+    static clearTable() {
+        this.body.replaceChildren();
+    }
+
+    /**
+     * 
+     * @param {Index.Resource} resource 
+     */
+    static createRow(resource) {
+        const row = document.createElement('tr');
+
+        const dateCell = this.#createDateCell(resource);
+        const nameCell = this.#createNameCell(resource);
+        const valueCell = this.#createValueCell(resource);
+
+        const xpCell = this.#createSimpleCell('xp');
+        const pmCell = this.#createSimpleCell('pm');
+        const totalCell = this.#createSimpleCell('total');
+
+        const { value, xp } = resource;
+
+        if (xp) {
+            xpCell.innerHTML = new Intl.NumberFormat('es-CO', { minimumFractionDigits: 0 }).format(xp);
+
+            pmCell.innerText = new Intl.NumberFormat('es-CO', { minimumFractionDigits: 0 })
+                .format(MathHelper.paymentByXP(xp));
+        }
+
+        if (xp && value) {
+            const total = MathHelper.price(value, xp);
+            const formattedTotal = new Intl.NumberFormat('es-CO', { style: 'currency', currency: 'USD', minimumFractionDigits: 0, maximumFractionDigits: 0 })
+                .format(total).replace('US$', '₭');
+            const quantity = new Intl.NumberFormat('es-CO', { minimumFractionDigits: 0 })
+                .format(Math.ceil(App.maxXP / xp));
+
+            totalCell.innerText = `${formattedTotal} (${quantity})`;
+
+            const limit = App.paymentLimit;
+            const limit2 = +((+`${limit}`[0] + 1) + '0'.repeat(`${limit}`.length - 1));
+
+            if (total <= limit) {
+                totalCell.classList.add('table-success');
+            } else if (total <= limit2) {
+                totalCell.classList.add('table-warning');
+            }
+        }
+
+        row.append(dateCell, nameCell, xpCell, valueCell, pmCell, totalCell);
+
+        nameCell.addEventListener('click', () => {
+            document.querySelectorAll('tr.table-secondary').forEach(elm => elm.classList.remove('table-secondary'));
+            row.classList.add('table-secondary');
+        });
+
+        valueCell.addEventListener('update', ({ detail }) => {
+            const updatedRow = this.createRow(detail);
+            updatedRow.className = row.className;
+
+            row.dispatchEvent(new CustomEvent('update', { detail: { data: detail, row: updatedRow } }));
+            Table.body.replaceChild(updatedRow, row);
+        });
+
+        return row;
+    }
+
+    /**
+     * 
+     * @param {Index.Resource} param0 
      * @returns {HTMLElement}
      */
-    #createDateCell(date) {
+    static #createDateCell({ date }) {
         const cell = document.createElement('td');
         cell.classList.add('date-cell');
         cell.innerText = date ? (new Date(date)).toLocaleString() : '';
+
+        if (date && new Date(date).toLocaleDateString() === new Date().toLocaleDateString()) {
+            cell.classList.add('table-info');
+        }
+
         return cell;
     }
 
     /**
      * 
-     * @param {string} name 
-     * @param {string} icon 
+     * @param {Index.Resource} param0 
      * @returns {HTMLElement}
      */
-    #createNameCell(name, icon) {
+    static #createNameCell({ name, icon, lvl }) {
         const cell = document.createElement('td');
         cell.classList.add('name-cell');
 
@@ -158,18 +245,19 @@ class IndexPage {
         const cellText = document.createElement('span');
         cellText.innerText = name;
 
-        cell.append(iconElm, cellText);
+        const lvlText = document.createElement('span');
+        lvlText.className = 'badge rounded-pill text-bg-dark';
+        lvlText.innerText = lvl;
+
+        const container = document.createElement('div');
+        container.append(iconElm, cellText, lvlText);
+        cell.append(container);
 
         cell.onclick = () => {
-            navigator.clipboard.writeText(name).then(() => {
-                Toast.showNotification(name, 'Text copied to clipboard');
-            }).catch(err => {
+            navigator.clipboard.writeText(name).catch(err => {
                 console.error(err);
                 Toast.showNotification(name, 'Failed to copy text');
             });
-
-            document.querySelectorAll('td.table-primary').forEach(elm => elm.classList.remove('table-primary'));
-            cell.classList.add('table-primary');
         };
 
         return cell;
@@ -180,12 +268,14 @@ class IndexPage {
      * @param {Index.Resource} resource 
      * @returns {HTMLElement}
      */
-    #createValueCell(resource, kxpCell, totalCell) {
+    static #createValueCell(resource) {
         const cell = document.createElement('td');
         cell.tabIndex = 0;
-        cell.classList.add(`value-cell`);
+        cell.classList.add('value-cell');
 
         const cellText = document.createElement('span');
+        cellText.innerText = new Intl.NumberFormat('es-CO', { style: 'currency', currency: 'USD', minimumFractionDigits: 0 })
+            .format(resource.value).replace('US$', '');
 
         const cellInput = document.createElement('input');
         cellInput.classList.add('form-control', 'form-control-sm');
@@ -197,14 +287,14 @@ class IndexPage {
             cellText.style.display = 'none';
             cellInput.style.display = 'inline-block';
             cellInput.placeholder = cellText.innerText;
-            cellInput.value = cellText.dataset.value;
+            cellInput.value = +resource.value;
             cellInput.select();
 
             cellInput.focus();
         };
 
         cellInput.onkeydown = ({ key }) => {
-            this.#lastKeyDown = key;
+            lastKeyDown = key;
             if (['Escape', 'Enter'].includes(key)) { cellInput.blur(); }
         };
 
@@ -212,24 +302,15 @@ class IndexPage {
             cellInput.style.display = 'none';
             cellText.style.display = 'inline';
 
-            if (this.#lastKeyDown === 'Escape') { return; }
-            if (['Tab', 'Enter'].includes(this.#lastKeyDown)) {
-                this.#saveValue(resource, +cellInput.value, +cellText.dataset.value);
-                cell.dispatchEvent(new CustomEvent('update', { detail: { value: +cellInput.value } }));
+            if (lastKeyDown === 'Escape') { return; }
+            if (['Tab', 'Enter'].includes(lastKeyDown)) {
+                if (+cellInput.value === +resource.value) { return; }
+
+                cell.dispatchEvent(new CustomEvent('update', {
+                    detail: { ...resource, value: +cellInput.value, date: Date.now() }
+                }));
             }
         };
-
-        cell.addEventListener('update', ({ detail }) => {
-            cellText.setAttribute('data-value', detail.value);
-            cellText.innerText = new Intl.NumberFormat('es-CO', { style: 'currency', currency: 'USD', minimumFractionDigits: 0 })
-                .format(detail.value).replace('US$', '');
-
-            kxpCell.innerText = new Intl.NumberFormat('es-CO', { minimumFractionDigits: 0 })
-                .format(+(detail.value / resource.xp).toFixed(2));
-
-            totalCell.innerText = new Intl.NumberFormat('es-CO', { style: 'currency', currency: 'USD', minimumFractionDigits: 0, maximumFractionDigits: 0 })
-                .format(+(detail.value / resource.xp * 179592).toFixed(2)).replace('US$', '₭');
-        });
 
         cell.append(cellText, cellInput);
 
@@ -242,7 +323,7 @@ class IndexPage {
      * @param {any} value 
      * @returns {HTMLElement}
      */
-    #createSimpleCell(name, value) {
+    static #createSimpleCell(name, value) {
         const cell = document.createElement('td');
         cell.classList.add(`${name}-cell`);
 
@@ -251,24 +332,12 @@ class IndexPage {
         return cell;
     }
 
-    /**
-     * 
-     * @param {Index.Resource} resource 
-     * @param {number} value 
-     * @param {number} prevValue 
-     * @returns 
-     */
-    async #saveValue(resource, value, prevValue) {
-        if (value === prevValue) { return; }
-        await this.#resourceModel.createOrUpdate({ ...resource, value });
-        Toast.showNotification(resource.name, 'Actualizado correctamente');
-    }
-
-};
+}
 
 document.addEventListener('DOMContentLoaded', () => {
     new IndexPage();
-
-    const tooltipTriggerList = document.querySelectorAll('[data-bs-toggle="tooltip"]');
-    [...tooltipTriggerList].map(tooltipTriggerEl => new bootstrap.Tooltip(tooltipTriggerEl));
+    Tooltip.initialize();
 });
+
+document.addEventListener('keydown', event => lastKeyDown = event.key);
+document.addEventListener('click', () => lastKeyDown = undefined);

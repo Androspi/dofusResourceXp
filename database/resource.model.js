@@ -1,6 +1,8 @@
 import { ResourceHistoryModel } from './resource-history.model.js';
 import { TableModel } from './table-model.js';
 
+import { MathHelper } from '../helpers/math.helper.js';
+
 import { } from "../interfaces/resources.interface.js";
 
 export class ResourceModel extends TableModel {
@@ -16,17 +18,37 @@ export class ResourceModel extends TableModel {
      * @param {Partial<Resources.Item>} param0 
      * @returns {Promise}
      */
-    createOrUpdate = ({ id, name, value, xp }) => new Promise(async (resolve) => {
+    createOrUpdate = ({ id, name, value, xp, date }) => new Promise(async (resolve) => {
+        const record = await this.get(id);
+
         const transaction = await this.createTransaction('readwrite');
         const table = this.getTable(transaction);
 
         transaction.oncomplete = () => {
             resolve();
-
-            new ResourceHistoryModel().createOrUpdate({ id, date: new Date().toLocaleDateString(), value });
+            new ResourceHistoryModel().createOrUpdate({ id, date: new Date(newDate).toLocaleDateString(), value });
         };
 
-        table.put({ id, name, xp, value, date: Date.now(), buyDate: (value / xp) <= 20 ? Date.now() : null });
+        const newDate = date ?? Date.now();
+        const buyDate = value <= MathHelper.paymentByXP(xp) ? Date.now() : record?.buyDate ?? null;
+
+        table.put({ id, name, xp, value, date: newDate, buyDate });
+    });
+
+    /**
+     * 
+     * @param {string} key 
+     * @returns {Promise<Resources.Item>}
+     */
+    get = (key) => new Promise(async (resolve) => {
+        /** @type {IDBTransaction } */
+        const transaction = await this.createTransaction('readonly');
+        const table = this.getTable(transaction);
+
+        const request = table.get(key);
+        request.onsuccess = (event) => {
+            resolve(event.target.result);
+        };
     });
 
     /**
@@ -40,8 +62,7 @@ export class ResourceModel extends TableModel {
 
         const request = table.getAll();
         request.onsuccess = (event) => {
-            const { result } = event.target;
-            resolve(result);
+            resolve(event.target.result);
         };
     });
 
