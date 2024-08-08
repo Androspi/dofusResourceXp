@@ -80,7 +80,9 @@ td {
 }
 
 .value-cell,
-.value-head {
+.value-head,
+.xp-cell,
+.xp-head {
     min-width: 90px;
     width: 90px;
 }
@@ -111,4 +113,36 @@ td:focus {
 
 td input {
     text-align: center;
+}
+
+#sort-menu {
+    position: absolute;
+    bottom: 60px;
+    right: 30px;
+}
+
+#download-btn {
+    position: absolute;
+    bottom: 15px;
+    right: 30px;
+}
+
+.dropup .dropdown-toggle::after {
+    content: unset;
+}
+
+#sort-menu .dropdown-menu li {
+    padding: 5px 10px;
+    column-gap: 10px;
+    align-items: center;
+    display: flex;
+}
+
+#sort-menu .dropdown-menu li {
+    white-space: nowrap;
+}
+
+.form-floating > .form-control {
+    height: calc(3rem + calc(var(--bs-border-width) * 2));
+    min-height: calc(3rem + calc(var(--bs-border-width) * 2));
 }

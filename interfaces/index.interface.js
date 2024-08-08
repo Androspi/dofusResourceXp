@@ -8,4 +8,5 @@
  * @property {number|null} xp 
  * @property {number} lvl 
  * @property {number} date 
+ * @property {number} buyDate 
  */

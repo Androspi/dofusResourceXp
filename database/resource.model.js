@@ -16,7 +16,7 @@ export class ResourceModel extends TableModel {
     /**
      * 
      * @param {Partial<Resources.Item>} param0 
-     * @returns {Promise}
+     * @returns {Promise<Resources.Item>}
      */
     createOrUpdate = ({ id, name, value, xp, date }) => new Promise(async (resolve) => {
         const record = await this.get(id);
@@ -25,7 +25,7 @@ export class ResourceModel extends TableModel {
         const table = this.getTable(transaction);
 
         transaction.oncomplete = () => {
-            resolve();
+            resolve({ id, name, xp, value, date: newDate, buyDate });
             new ResourceHistoryModel().createOrUpdate({ id, date: new Date(newDate).toLocaleDateString(), value });
         };
 

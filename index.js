@@ -28,8 +28,8 @@ class IndexPage {
     };
 
     #sorting = {
-        selected: ['totalPrice', 'asc'],
-        totalPrice: (a, b) => {
+        selected: ['total', 'asc'],
+        total: (a, b) => {
             if (!b.xp) { return -1; }
             if (!a.xp) { return 1; }
 
@@ -38,7 +38,27 @@ class IndexPage {
 
             const response = aKxp > bKxp ? 1 : -1;
             return this.#sorting.selected[1] === 'asc' ? response : (response * -1);
-        }
+        },
+        date: (a, b) => {
+            const response = a.date > b.date ? 1 : -1;
+            return this.#sorting.selected[1] === 'asc' ? response : (response * -1);
+        },
+        name: (a, b) => {
+            const response = a.name > b.name ? 1 : -1;
+            return this.#sorting.selected[1] === 'asc' ? response : (response * -1);
+        },
+        lvl: (a, b) => {
+            const response = a.lvl > b.lvl ? 1 : -1;
+            return this.#sorting.selected[1] === 'asc' ? response : (response * -1);
+        },
+        pm: (a, b) => {
+            const response = MathHelper.paymentByXP(a.xp) > MathHelper.paymentByXP(b.xp) ? 1 : -1;
+            return this.#sorting.selected[1] === 'asc' ? response : (response * -1);
+        },
+        bought: (a, b) => {
+            const response = a.buyDate > b.buyDate ? 1 : -1;
+            return this.#sorting.selected[1] === 'asc' ? response : (response * -1);
+        },
     }
 
     constructor() {
@@ -49,6 +69,9 @@ class IndexPage {
     init() {
         this.getResources();
         this.setPageLoader();
+        this.setSortOptions();
+        this.setSearcher();
+        this.setDownload();
     }
 
     getResources() {
@@ -62,6 +85,7 @@ class IndexPage {
                 const saved = data.find(elm => elm.id === ankama_id);
 
                 return {
+                    buyDate: saved?.buyDate ?? null,
                     value: saved?.value ?? null,
                     date: saved?.date ?? null,
                     xp: saved?.xp ?? null,
@@ -73,13 +97,13 @@ class IndexPage {
                 };
             });
 
-            Table.clearTable();
             this.sortResources();
         });
     }
 
     sortResources() {
         this.#resources.sort(this.#sorting[this.#sorting.selected[0]].bind(this));
+        Table.clearTable();
         this.loadResources(1);
     }
 
@@ -124,7 +148,6 @@ class IndexPage {
         });
     }
 
-
     /**
      * 
      * @param {Index.Resource} resource 
@@ -133,8 +156,126 @@ class IndexPage {
      * @returns 
      */
     async #saveValue(resource) {
-        await this.#resourceModel.createOrUpdate(resource);
+        const record = await this.#resourceModel.createOrUpdate(resource);
+
+        resource = this.#resources.find(({ id }) => id === resource.id);
+        resource.buyDate = record.buyDate;
+        resource.value = record.value;
+        resource.date = record.date;
+        resource.xp = record.xp;
+
         Toast.showNotification(resource.name, 'Actualizado correctamente');
+    }
+
+    setSortOptions() {
+        const menu = document.querySelector('#sort-menu .dropdown-menu');
+
+        const options = [
+            { name: 'Compra', id: 'bought', type: 'string' },
+            { name: 'Fecha', id: 'date', type: 'string' },
+            { name: 'Nombre', id: 'name', type: 'string' },
+            { name: 'Nivel', id: 'lvl', type: 'numeric' },
+            { name: 'Precio Máximo', id: 'pm', type: 'numeric' },
+            { name: 'Total', id: 'total', type: 'numeric' },
+        ];
+
+        options.forEach(({ name, id, type }) => {
+            const item = document.createElement('li');
+
+            const textItem = document.createElement('span');
+            textItem.innerText = name;
+
+            const ascItem = document.createElement('button');
+            ascItem.className = 'btn btn-sm btn-secondary rounded-pill';
+            ascItem.setAttribute('type', 'button');
+
+            const descItem = document.createElement('button');
+            descItem.className = 'btn btn-sm btn-secondary rounded-pill';
+            descItem.setAttribute('type', 'button');
+
+            if (type === 'numeric') {
+                ascItem.innerHTML = '<i class="bi bi-sort-numeric-up"></i>';
+                descItem.innerHTML = '<i class="bi bi-sort-numeric-down"></i>';
+            } else {
+                ascItem.innerHTML = '<i class="bi bi-sort-alpha-down"></i>';
+                descItem.innerHTML = '<i class="bi bi-sort-alpha-up"></i>';
+            }
+
+            [ascItem, descItem].forEach((elm, ix) => elm.onclick = () => {
+                this.#sorting.selected = [id, !ix ? 'asc' : 'desc'];
+                this.sortResources(1);
+            });
+
+            item.append(ascItem, descItem, textItem);
+            menu.append(item);
+        });
+    }
+
+    setSearcher() {
+        let resources;
+        let timer = 0;
+
+        /** @type {HTMLInputElement} */
+        const input = document.querySelector('#resource-search');
+
+        input.oninput = ({ target: { value } }) => {
+            if (!resources) { resources = this.#resources; }
+
+            clearTimeout(timer);
+
+            timer = window.setTimeout(() => {
+                this.#resources = resources.filter(({ name }) => {
+                    const normalizedName = name.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+                    const normalizedValue = value.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+
+                    return normalizedName.includes(normalizedValue);
+                });
+                this.sortResources();
+            }, 300);
+        }
+
+        document.addEventListener('keydown', event => {
+            if ((!event.ctrlKey && !event.metaKey) || event.key !== 'f') { return; }
+            event.preventDefault();
+            input.focus();
+        });
+    }
+
+    setDownload() {
+        const btn = document.querySelector('#download-btn');
+
+        btn.onclick = () => {
+            const keys = ['buyDate', 'value', 'date', 'xp', 'type', 'lvl', 'name'];
+
+            const csvRows = [];
+            csvRows.push('"Fecha de compra","Valor","Fecha de actualización","XP","Tipo","Lvl","Nombre"');
+
+            for (const record of this.#resources) {
+                const values = keys.map(key => {
+                    if (['buyDate', 'date'].includes(key)) {
+                        return record[key] ? `"${new Date(record[key]).toLocaleString()}"` : '""';
+                    }
+
+                    return record[key] ? `"${record[key]}"` : '""';
+                });
+
+                csvRows.push(values.join(','));
+            }
+
+            const bom = '\uFEFF';
+            const csvData = csvRows.join('\r\n');
+            const blob = new Blob([bom + csvData], { type: 'text/csv;charset=utf-8;' });
+
+            const link = document.createElement('a');
+            link.href = URL.createObjectURL(blob);
+            link.download =  `${new Date().toLocaleDateString()}_resources.csv`;
+
+            document.body.appendChild(link);
+
+            link.click();
+
+            document.body.removeChild(link);
+        };
     }
 
 };
@@ -159,39 +300,10 @@ class Table {
 
         const dateCell = this.#createDateCell(resource);
         const nameCell = this.#createNameCell(resource);
+        const xpCell = this.#createXPCell(resource);
         const valueCell = this.#createValueCell(resource);
-
-        const xpCell = this.#createSimpleCell('xp');
-        const pmCell = this.#createSimpleCell('pm');
-        const totalCell = this.#createSimpleCell('total');
-
-        const { value, xp } = resource;
-
-        if (xp) {
-            xpCell.innerHTML = new Intl.NumberFormat('es-CO', { minimumFractionDigits: 0 }).format(xp);
-
-            pmCell.innerText = new Intl.NumberFormat('es-CO', { minimumFractionDigits: 0 })
-                .format(MathHelper.paymentByXP(xp));
-        }
-
-        if (xp && value) {
-            const total = MathHelper.price(value, xp);
-            const formattedTotal = new Intl.NumberFormat('es-CO', { style: 'currency', currency: 'USD', minimumFractionDigits: 0, maximumFractionDigits: 0 })
-                .format(total).replace('US$', '₭');
-            const quantity = new Intl.NumberFormat('es-CO', { minimumFractionDigits: 0 })
-                .format(Math.ceil(App.maxXP / xp));
-
-            totalCell.innerText = `${formattedTotal} (${quantity})`;
-
-            const limit = App.paymentLimit;
-            const limit2 = +((+`${limit}`[0] + 1) + '0'.repeat(`${limit}`.length - 1));
-
-            if (total <= limit) {
-                totalCell.classList.add('table-success');
-            } else if (total <= limit2) {
-                totalCell.classList.add('table-warning');
-            }
-        }
+        const pmCell = this.#createPMCell(resource);
+        const totalCell = this.#createTotalCell(resource);
 
         row.append(dateCell, nameCell, xpCell, valueCell, pmCell, totalCell);
 
@@ -200,13 +312,13 @@ class Table {
             row.classList.add('table-secondary');
         });
 
-        valueCell.addEventListener('update', ({ detail }) => {
+        [valueCell, xpCell].forEach(cell => cell.addEventListener('update', ({ detail }) => {
             const updatedRow = this.createRow(detail);
             updatedRow.className = row.className;
 
             row.dispatchEvent(new CustomEvent('update', { detail: { data: detail, row: updatedRow } }));
             Table.body.replaceChild(updatedRow, row);
-        });
+        }));
 
         return row;
     }
@@ -275,7 +387,7 @@ class Table {
 
         const cellText = document.createElement('span');
         cellText.innerText = new Intl.NumberFormat('es-CO', { style: 'currency', currency: 'USD', minimumFractionDigits: 0 })
-            .format(resource.value).replace('US$', '');
+            .format(resource.value ?? 0).replace('US$', '');
 
         const cellInput = document.createElement('input');
         cellInput.classList.add('form-control', 'form-control-sm');
@@ -319,15 +431,98 @@ class Table {
 
     /**
      * 
-     * @param {string} name 
-     * @param {any} value 
+     * @param {Index.Resource} resource 
      * @returns {HTMLElement}
      */
-    static #createSimpleCell(name, value) {
+    static #createXPCell(resource) {
         const cell = document.createElement('td');
-        cell.classList.add(`${name}-cell`);
+        cell.classList.add('xp-cell');
 
-        if (value) { cell.innerText = value; }
+        const cellText = document.createElement('span');
+        cellText.innerText = resource.xp ? new Intl.NumberFormat('es-CO', { minimumFractionDigits: 0 }).format(+resource.xp) : '';
+
+        const cellInput = document.createElement('input');
+        cellInput.classList.add('form-control', 'form-control-sm');
+        cellInput.style.display = 'none';
+        cellInput.style.type = 'number';
+        cellInput.style.width = '80px';
+
+        cell.onclick = () => {
+            cellText.style.display = 'none';
+            cellInput.style.display = 'inline-block';
+            cellInput.placeholder = cellText.innerText;
+            cellInput.value = +resource.xp;
+            cellInput.select();
+
+            cellInput.focus();
+        };
+
+        cellInput.onkeydown = ({ key }) => {
+            lastKeyDown = key;
+            if (['Escape', 'Enter'].includes(key)) { cellInput.blur(); }
+        };
+
+        cellInput.onblur = () => {
+            cellInput.style.display = 'none';
+            cellText.style.display = 'inline';
+
+            if (lastKeyDown === 'Escape') { return; }
+            if (['Tab', 'Enter'].includes(lastKeyDown)) {
+                if (+cellInput.value === +resource.xp) { return; }
+
+                cell.dispatchEvent(new CustomEvent('update', {
+                    detail: { ...resource, xp: +cellInput.value }
+                }));
+            }
+        };
+
+        cell.append(cellText, cellInput);
+
+        return cell;
+    }
+
+    /**
+     * 
+     * @param {Index.Resource} resource 
+     * @returns {HTMLElement}
+     */
+    static #createPMCell({ xp }) {
+        const cell = document.createElement('td');
+        cell.classList.add('pm-cell');
+
+        if (xp) {
+            cell.innerText = new Intl.NumberFormat('es-CO', { minimumFractionDigits: 0 }).format(MathHelper.paymentByXP(xp));
+        }
+
+        return cell;
+    }
+
+    /**
+     * 
+     * @param {Index.Resource} resource 
+     * @returns {HTMLElement}
+     */
+    static #createTotalCell({ xp, value }) {
+        const cell = document.createElement('td');
+        cell.classList.add('total-cell');
+
+        if (!xp && !value) { return cell; }
+
+        const total = MathHelper.price(value, xp);
+        const formattedTotal = new Intl.NumberFormat('es-CO', { style: 'currency', currency: 'USD', minimumFractionDigits: 0, maximumFractionDigits: 0 })
+            .format(total).replace('US$', '₭');
+        const quantity = new Intl.NumberFormat('es-CO', { minimumFractionDigits: 0 }).format(Math.ceil(App.maxXP / xp));
+
+        cell.innerText = `${formattedTotal} (${quantity})`;
+
+        const limit = App.paymentLimit;
+        const limit2 = +((+`${limit}`[0] + 1) + '0'.repeat(`${limit}`.length - 1));
+
+        if (total <= limit) {
+            cell.classList.add('table-success');
+        } else if (total <= limit2) {
+            cell.classList.add('table-warning');
+        }
 
         return cell;
     }
